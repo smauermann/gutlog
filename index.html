@@ -502,7 +502,7 @@ function renderAll(){renderTimeline();renderStats();renderFoods();
 /* ════════════════════════  Views  ════════════════════════ */
 function goView(id){$$(".view").forEach(v=>v.classList.toggle("active",v.id===id));
   $$("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.view===id)));window.scrollTo({top:0});}
-$$("nav.tabs button").forEach(b=>b.onclick=()=>goView(b.dataset.view));
+$$("nav.tabs button").forEach(b=>b.onclick=()=>{if(b.dataset.view==="v-log"&&!editId)$("#bm-when").value=localInput(new Date());goView(b.dataset.view);});
 
 /* ════════════════════════  Export  ════════════════════════ */
 const csvCell=v=>{v=(v==null?"":String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
