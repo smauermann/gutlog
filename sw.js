@@ -1,7 +1,7 @@
 /* Gutlog service worker — offline-first app shell.
    The app needs no network at all; this just makes it survive being opened
    offline after install, and satisfies the installability criteria. */
-const CACHE = "gutlog-v2";
+const CACHE = "gutlog-v3";
 const ASSETS = [
   "./", "./index.html", "./manifest.webmanifest",
   "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"
