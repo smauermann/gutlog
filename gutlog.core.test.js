@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import Core from "./gutlog.core.js";
 
-const { severity, isFlare, avgPerDay, detectFlare } = Core;
+const { severity, isFlare, avgPerDay, detectFlare, dailySeries } = Core;
 
 const DAY = 864e5;
 const HOUR = 3600e3;
@@ -79,4 +79,60 @@ test("detectFlare: returns null for a calm, spread-out history", () => {
     bm({ ts: NOW }), bm({ ts: NOW - 2 * DAY }), bm({ ts: NOW - 4 * DAY }), bm({ ts: NOW - 6 * DAY }),
   ];
   expect(detectFlare(calm, NOW)).toBeNull();
+});
+
+// Place test entries at midday of the function's own bucket timestamps so the
+// assertions hold regardless of the machine's timezone (no midnight/DST edges).
+const buckets = (range) => dailySeries([], range, NOW).days;
+const noon = (range, i) => buckets(range)[i].ts + 12 * HOUR;
+
+test("dailySeries: empty input yields one 'none' bucket per day, avg 0", () => {
+  const r = dailySeries([], 30, NOW);
+  expect(r.days.length).toBe(30);
+  expect(r.total).toBe(0);
+  expect(r.avg).toBe(0);
+  expect(r.days.every(d => d.count === 0 && d.status === "none")).toBe(true);
+});
+
+test("dailySeries: a day's status is its worst (flare > loose > healthy)", () => {
+  const entries = [
+    bm({ ts: noon(7, 6), bristol: 4 }),                      // healthy
+    bm({ ts: noon(7, 6), bristol: 7 }),                      // loose
+    bm({ ts: noon(7, 6), bristol: 7, blood: "visible" }),    // flare
+  ];
+  const r = dailySeries(entries, 7, NOW);
+  expect(r.days[6].count).toBe(3);
+  expect(r.days[6].status).toBe("flare");
+});
+
+test("dailySeries: healthy vs looser classification by Bristol", () => {
+  expect(dailySeries([bm({ ts: noon(7, 3), bristol: 4 })], 7, NOW).days[3].status).toBe("healthy");
+  expect(dailySeries([bm({ ts: noon(7, 3), bristol: 6 })], 7, NOW).days[3].status).toBe("loose");
+});
+
+test("dailySeries: zero-movement days stay gaps (count 0, status none)", () => {
+  const r = dailySeries([bm({ ts: noon(7, 2) }), bm({ ts: noon(7, 5) })], 7, NOW);
+  expect(r.days.filter(d => d.count === 0).length).toBe(5);
+  expect(r.days[2].count).toBe(1);
+  expect(r.days[5].count).toBe(1);
+});
+
+test("dailySeries: entries older than the window are excluded", () => {
+  const firstBucketStart = buckets(30)[0].ts;
+  const inWindow = firstBucketStart + 12 * HOUR;  // oldest visible day
+  const before = firstBucketStart - 12 * HOUR;    // half a day before the window
+  const r = dailySeries([bm({ ts: inWindow }), bm({ ts: before })], 30, NOW);
+  expect(r.total).toBe(1);
+  expect(r.days[0].count).toBe(1);
+});
+
+test("dailySeries: avg divides by elapsed days, not the full range", () => {
+  // 4 movements across the last two days of a 30-day range -> avg 2, not 4/30
+  const entries = [
+    bm({ ts: noon(30, 28) }), bm({ ts: noon(30, 28) }),
+    bm({ ts: noon(30, 29) }), bm({ ts: noon(30, 29) }),
+  ];
+  const r = dailySeries(entries, 30, NOW);
+  expect(r.total).toBe(4);
+  expect(r.avg).toBe(2);
 });
