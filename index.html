@@ -133,6 +133,15 @@
   .stat .v.warn{color:var(--clay)}
   .stat .l{font-size:.73rem;color:var(--ink-faint);margin-top:6px;font-weight:560;line-height:1.25}
 
+  .trend-range{margin-bottom:14px}
+  #trend-chart{margin:2px 0}
+  #trend-chart svg{display:block;border-radius:6px}
+  .chart-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:.74rem;color:var(--ink-soft)}
+  .chart-legend span{display:inline-flex;align-items:center;gap:6px}
+  .chart-legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .chart-legend .avg i{width:15px;height:0;border-radius:0;border-top:2px dashed var(--ink-faint)}
+  .chart-caption{font-size:.74rem;color:var(--ink-faint);margin-top:9px}
+
   .foodrow{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line)}
   .foodrow:last-child{border-bottom:0}
   .foodrow .nm{flex:1;font-weight:600;font-size:.95rem;text-transform:capitalize}
@@ -189,6 +198,7 @@
     #print-root th,#print-root td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}
     #print-root th{background:#eee}
     #print-root .pstats{display:flex;gap:24px;margin:8px 0;font-size:10pt}
+    #print-root svg{width:100%;height:130px;margin:8px 0}
     .pfoot{margin-top:14px;font-size:8pt;color:#333}
   }
 </style>
@@ -242,6 +252,22 @@
 
   <!-- INSIGHTS -->
   <section id="v-insights" class="view" aria-label="Insights">
+    <div class="card">
+      <h2>Trend</h2>
+      <div class="seg trend-range" id="trend-range" role="group" aria-label="Chart range">
+        <button type="button" data-range="7">Week</button>
+        <button type="button" data-range="30" aria-pressed="true">Month</button>
+        <button type="button" data-range="90">3 months</button>
+      </div>
+      <div id="trend-chart"></div>
+      <div class="chart-legend" id="chart-legend">
+        <span><i style="background:#3f6f5e"></i>Normal</span>
+        <span><i style="background:#9a7b1f"></i>Looser</span>
+        <span><i style="background:#b8632f"></i>Flare signs</span>
+        <span class="avg"><i></i>Avg / day</span>
+      </div>
+      <div class="chart-caption" id="chart-caption"></div>
+    </div>
     <div class="stats" id="stats"></div>
     <div class="card">
       <h2>Foods that show up before your flare-ups</h2>
@@ -362,7 +388,7 @@ let toastT;function toast(m){const e=$("#toast");e.textContent=m;e.classList.add
 const bms=()=>state.entries.filter(e=>e.kind==="bm");
 const recalls=()=>state.entries.filter(e=>e.kind==="recall");
 /* Symptom scoring & flare detection live in gutlog.core.js (shared with the test suite). */
-const {isFlare,detectFlare}=GutlogCore;
+const {isFlare,detectFlare,dailySeries}=GutlogCore;
 
 /* ════════════════════════  BM form  ════════════════════════ */
 let bm={bristol:null,urgency:"none",blood:"none",mucus:"no",pain:0},editId=null;
@@ -489,7 +515,30 @@ function renderFoods(){const R=recalls(),root=$("#foods");
       '<span class="meter"><i style="width:'+pct+'%"></i></span>'+
       '<span class="verdict'+(few?" few":"")+'">'+(few?"seen once":f.n+"×")+'</span></div>';}).join("");}
 
-function renderAll(){renderTimeline();renderStats();renderFoods();
+let chartRange=30;
+function chartAria(series){const f=series.days.filter(d=>d.status==="flare").length;
+  return "Movements per day over "+series.days.length+" days; "+series.total+" total, "+f+" flare-sign day"+(f===1?"":"s")+", about "+series.avg.toFixed(1)+" per day.";}
+function chartSVG(series){const days=series.days,max=Math.max(1,...days.map(d=>d.count));
+  const slot=4,barW=2.6,top=8,plotH=92,baseY=top+plotH,W=days.length*slot,H=baseY+2;
+  const fill={flare:"#b8632f",loose:"#9a7b1f",healthy:"#3f6f5e"};
+  let bars="";days.forEach((d,i)=>{if(!d.count)return;const h=d.count/max*plotH,x=i*slot+(slot-barW)/2,y=baseY-h;
+    bars+='<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+barW+'" height="'+h.toFixed(2)+'" rx="0.8" fill="'+fill[d.status]+'"/>';});
+  const grid='<line x1="0" y1="'+baseY+'" x2="'+W+'" y2="'+baseY+'" stroke="#e4ddd0" stroke-width="0.5"/>';
+  let avg="";if(series.avg>0){const y=baseY-Math.min(series.avg,max)/max*plotH;
+    avg='<line x1="0" y1="'+y.toFixed(2)+'" x2="'+W+'" y2="'+y.toFixed(2)+'" stroke="#8b9082" stroke-width="0.6" stroke-dasharray="2 2"/>';}
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" width="100%" height="120" role="img" aria-label="'+chartAria(series)+'">'+grid+avg+bars+'</svg>';}
+function renderChart(){const root=$("#trend-chart");if(!root)return;
+  const legend=$("#chart-legend"),cap=$("#chart-caption");
+  if(bms().length<4){root.innerHTML='<div class="empty" style="padding:26px 12px"><p>Log a few movements and your day-by-day trend shows up here.</p></div>';
+    if(legend)legend.style.display="none";if(cap)cap.textContent="";return;}
+  if(legend)legend.style.display="";
+  const series=dailySeries(state.entries,chartRange,Date.now());root.innerHTML=chartSVG(series);
+  const o={month:"short",day:"numeric"},a=series.days[0].ts,z=series.days[series.days.length-1].ts;
+  if(cap)cap.textContent=new Date(a).toLocaleDateString([],o)+" – "+new Date(z).toLocaleDateString([],o)+" · "+series.total+" movements · ~"+series.avg.toFixed(1)+"/day";}
+$$("#trend-range button").forEach(btn=>btn.onclick=()=>{chartRange=Number(btn.dataset.range);
+  $$("#trend-range button").forEach(x=>x.setAttribute("aria-pressed",String(x===btn)));renderChart();});
+
+function renderAll(){renderTimeline();renderStats();renderFoods();renderChart();
   $("#data-count").textContent=state.entries.length+" entries stored ("+bms().length+" movements, "+recalls().length+" flare food notes).";
   refreshSuggestions();}
 
@@ -535,6 +584,7 @@ $("#ex-print").onclick=()=>{const since=Date.now()-30*864e5;
     (e.kind==="bm"?"BM":"Foods")+"</td><td>"+(e.kind==="bm"?("Type "+e.bristol+(e.blood!=="none"?", blood:"+e.blood:"")+(e.mucus==="yes"?", mucus":"")+(e.urgency!=="none"?", urgency:"+e.urgency:"")+(e.pain>0?", pain "+e.pain+"/10":"")):("last "+e.windowH+"h: "+esc((e.foods||[]).join(", "))))+
     "</td><td>"+esc(e.notes||"")+"</td></tr>";}).join("");
   $("#print-root").innerHTML="<h1>Gutlog — symptom summary</h1><div style='font-size:10pt;color:#333'>"+new Date(firstTs).toLocaleDateString()+" – "+new Date(lastTs).toLocaleDateString()+" ("+spanDays+" day"+(spanDays===1?"":"s")+" tracked) · generated "+new Date().toLocaleDateString()+"</div>"+
+    (b.length>=4?"<h2>Movements per day (last 30 days)</h2>"+chartSVG(dailySeries(state.entries,30,Date.now())):"")+
     "<div class='pstats'><span><b>"+b.length+"</b> bowel movements</span><span><b>"+avgDay+"</b> avg/day</span><span><b>"+flareDays+"</b> flare-sign days</span><span><b>"+bloodN+"</b> with blood</span></div>"+
     (suspects.length?"<h2>Foods recalled before flare-ups (patterns only)</h2><p style='font-size:10pt'>"+suspects.join(", ")+"</p>":"")+
     "<h2>Full log</h2><table><thead><tr><th>When</th><th>Type</th><th>Details</th><th>Notes</th></tr></thead><tbody>"+rows+"</tbody></table>"+

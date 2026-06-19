@@ -47,7 +47,38 @@
     return reasons.length ? reasons : null;
   }
 
-  const Core = { severity, isFlare, avgPerDay, detectFlare };
+  const pad2 = n => String(n).padStart(2, "0");
+  const dayKey = ts => { const d = new Date(ts); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); };
+
+  /* Per-day buckets for the trend chart over the trailing `rangeDays` (today included).
+     Returns { days:[{key, ts, count, status}], total, avg }. status is the day's worst:
+     "flare" > "loose" (Bristol >= 5) > "healthy" > "none" (no movements -> a gap).
+     avg = movements per *elapsed* day (first logged day .. today), not a flat denominator,
+     so calm zero-movement days still count but pre-tracking emptiness doesn't drag it down. */
+  function dailySeries(entries, rangeDays, now) {
+    const RANK = { none: 0, healthy: 1, loose: 2, flare: 3 };
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    const days = [], idx = {};
+    for (let i = rangeDays - 1; i >= 0; i--) {
+      const d = new Date(start); d.setDate(start.getDate() - i);
+      idx[dayKey(d.getTime())] = days.length;
+      days.push({ key: dayKey(d.getTime()), ts: d.getTime(), count: 0, status: "none" });
+    }
+    for (const e of entries) {
+      if (e.kind !== "bm") continue;
+      const b = days[idx[dayKey(e.ts)]];
+      if (!b) continue;
+      b.count++;
+      const c = isFlare(e) ? "flare" : (e.bristol >= 5 ? "loose" : "healthy");
+      if (RANK[c] > RANK[b.status]) b.status = c;
+    }
+    const total = days.reduce((s, d) => s + d.count, 0);
+    const firstIdx = days.findIndex(d => d.count > 0);
+    const elapsed = firstIdx < 0 ? 0 : days.length - firstIdx;
+    return { days, total, avg: elapsed > 0 ? total / elapsed : 0 };
+  }
+
+  const Core = { severity, isFlare, avgPerDay, detectFlare, dailySeries };
 
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
   else root.GutlogCore = Core;
