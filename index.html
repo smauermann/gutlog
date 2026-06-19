@@ -133,14 +133,16 @@
   .stat .v.warn{color:var(--clay)}
   .stat .l{font-size:.73rem;color:var(--ink-faint);margin-top:6px;font-weight:560;line-height:1.25}
 
-  .trend-range{margin-bottom:14px}
-  #trend-chart{margin:2px 0}
-  #trend-chart svg{display:block;border-radius:6px}
-  .chart-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:.74rem;color:var(--ink-soft)}
+  .trend-range{margin-bottom:16px}
+  #trend-chart{margin:2px 0;touch-action:pan-y;cursor:crosshair}
+  #trend-chart svg{display:block;width:100%;height:150px}
+  .chart-axis{display:flex;justify-content:space-between;margin-top:7px;font-size:.68rem;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .chart-caption{margin-top:13px;min-height:1.35em;font-size:.88rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .chart-caption b{color:var(--ink);font-weight:680}
+  .chart-caption .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px}
+  .chart-legend{display:flex;flex-wrap:wrap;gap:13px;margin-top:14px;font-size:.73rem;color:var(--ink-soft)}
   .chart-legend span{display:inline-flex;align-items:center;gap:6px}
   .chart-legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
-  .chart-legend .avg i{width:15px;height:0;border-radius:0;border-top:2px dashed var(--ink-faint)}
-  .chart-caption{font-size:.74rem;color:var(--ink-faint);margin-top:9px}
 
   .foodrow{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line)}
   .foodrow:last-child{border-bottom:0}
@@ -260,13 +262,14 @@
         <button type="button" data-range="90">3 months</button>
       </div>
       <div id="trend-chart"></div>
+      <div class="chart-axis" id="chart-axis"></div>
+      <div class="chart-caption" id="chart-caption"></div>
       <div class="chart-legend" id="chart-legend">
         <span><i style="background:#3f6f5e"></i>Normal</span>
         <span><i style="background:#9a7b1f"></i>Looser</span>
         <span><i style="background:#b8632f"></i>Flare signs</span>
-        <span class="avg"><i></i>Avg / day</span>
+        <span><i style="background:#e7f0ea;border:1px solid #cfe1d6"></i>Your usual</span>
       </div>
-      <div class="chart-caption" id="chart-caption"></div>
     </div>
     <div class="stats" id="stats"></div>
     <div class="card">
@@ -515,28 +518,48 @@ function renderFoods(){const R=recalls(),root=$("#foods");
       '<span class="meter"><i style="width:'+pct+'%"></i></span>'+
       '<span class="verdict'+(few?" few":"")+'">'+(few?"seen once":f.n+"×")+'</span></div>';}).join("");}
 
-let chartRange=30;
-function chartAria(series){const f=series.days.filter(d=>d.status==="flare").length;
-  return "Movements per day over "+series.days.length+" days; "+series.total+" total, "+f+" flare-sign day"+(f===1?"":"s")+", about "+series.avg.toFixed(1)+" per day.";}
-function chartSVG(series){const days=series.days,max=Math.max(1,...days.map(d=>d.count));
-  const slot=4,barW=2.6,top=8,plotH=92,baseY=top+plotH,W=days.length*slot,H=baseY+2;
+let chartRange=30,chartSeries=null;
+const STATUS={none:["no movements","#b9b09c"],healthy:["normal","#3f6f5e"],loose:["looser","#9a7b1f"],flare:["flare signs","#b8632f"]};
+function chartAria(s){const f=s.days.filter(d=>d.status==="flare").length;
+  return "Movements per day over "+s.days.length+" days: "+s.total+" total, about "+s.avg.toFixed(1)+" a day, "+f+" day"+(f===1?"":"s")+" with flare signs.";}
+function chartSVG(s,interactive){const days=s.days,n=days.length,max=Math.max(1,...days.map(d=>d.count));
+  const slot=10,gap=2.4,barW=slot-gap,top=8,plotH=118,baseY=top+plotH,W=n*slot,H=baseY+1;
   const fill={flare:"#b8632f",loose:"#9a7b1f",healthy:"#3f6f5e"};
-  let bars="";days.forEach((d,i)=>{if(!d.count)return;const h=d.count/max*plotH,x=i*slot+(slot-barW)/2,y=baseY-h;
-    bars+='<rect x="'+x.toFixed(2)+'" y="'+y.toFixed(2)+'" width="'+barW+'" height="'+h.toFixed(2)+'" rx="0.8" fill="'+fill[d.status]+'"/>';});
-  const grid='<line x1="0" y1="'+baseY+'" x2="'+W+'" y2="'+baseY+'" stroke="#e4ddd0" stroke-width="0.5"/>';
-  let avg="";if(series.avg>0){const y=baseY-Math.min(series.avg,max)/max*plotH;
-    avg='<line x1="0" y1="'+y.toFixed(2)+'" x2="'+W+'" y2="'+y.toFixed(2)+'" stroke="#8b9082" stroke-width="0.6" stroke-dasharray="2 2"/>';}
-  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" width="100%" height="120" role="img" aria-label="'+chartAria(series)+'">'+grid+avg+bars+'</svg>';}
+  const yOf=v=>baseY-Math.min(v,max)/max*plotH;
+  let band="";if(s.avg>0){const by=yOf(s.avg);
+    band='<rect x="0" y="'+by.toFixed(1)+'" width="'+W+'" height="'+(baseY-by).toFixed(1)+'" fill="#e7f0ea"/>'+
+         '<line x1="0" y1="'+by.toFixed(1)+'" x2="'+W+'" y2="'+by.toFixed(1)+'" stroke="#7fa594" stroke-width="0.8" stroke-dasharray="3 2"/>';}
+  let bars="";days.forEach((d,i)=>{if(!d.count)return;const y=yOf(d.count);
+    bars+='<rect x="'+(i*slot+gap/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW+'" height="'+(baseY-y).toFixed(1)+'" rx="1.4" fill="'+fill[d.status]+'"/>';});
+  const axis='<line x1="0" y1="'+baseY+'" x2="'+W+'" y2="'+baseY+'" stroke="#e4ddd0" stroke-width="1"/>';
+  const cursor=interactive?'<line id="chart-cursor" x1="0" y1="'+top+'" x2="0" y2="'+baseY+'" stroke="#23271f" stroke-width="0.7" opacity="0"/>':"";
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="'+chartAria(s)+'">'+band+axis+bars+cursor+'</svg>';}
+function setRead(i){const cap=$("#chart-caption");if(!cap||!chartSeries)return;
+  if(i==null){cap.innerHTML='<b>'+chartSeries.avg.toFixed(1)+'</b> movements a day on average · <b>'+chartSeries.total+'</b> across '+chartSeries.days.length+' days';return;}
+  const d=chartSeries.days[i],lab=STATUS[d.status][0],col=STATUS[d.status][1],
+    date=new Date(d.ts).toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"});
+  cap.innerHTML='<span class="dot" style="background:'+col+'"></span><b>'+date+'</b> · '+(d.count?d.count+" movement"+(d.count===1?"":"s")+" · "+lab:lab);}
 function renderChart(){const root=$("#trend-chart");if(!root)return;
-  const legend=$("#chart-legend"),cap=$("#chart-caption");
+  const axisEl=$("#chart-axis"),legend=$("#chart-legend"),cap=$("#chart-caption");
   if(bms().length<4){root.innerHTML='<div class="empty" style="padding:26px 12px"><p>Log a few movements and your day-by-day trend shows up here.</p></div>';
-    if(legend)legend.style.display="none";if(cap)cap.textContent="";return;}
-  if(legend)legend.style.display="";
-  const series=dailySeries(state.entries,chartRange,Date.now());root.innerHTML=chartSVG(series);
-  const o={month:"short",day:"numeric"},a=series.days[0].ts,z=series.days[series.days.length-1].ts;
-  if(cap)cap.textContent=new Date(a).toLocaleDateString([],o)+" – "+new Date(z).toLocaleDateString([],o)+" · "+series.total+" movements · ~"+series.avg.toFixed(1)+"/day";}
+    [axisEl,legend].forEach(e=>{if(e)e.style.display="none";});if(cap)cap.textContent="";chartSeries=null;return;}
+  [axisEl,legend].forEach(e=>{if(e)e.style.display="";});
+  chartSeries=dailySeries(state.entries,chartRange,Date.now());root.innerHTML=chartSVG(chartSeries,true);
+  const f=ts=>new Date(ts).toLocaleDateString([],{month:"short",day:"numeric"}),dz=chartSeries.days,
+    mid=dz[Math.floor((dz.length-1)/2)].ts;
+  if(axisEl)axisEl.innerHTML="<span>"+f(dz[0].ts)+"</span><span>"+f(mid)+"</span><span>Today</span>";
+  setRead();}
 $$("#trend-range button").forEach(btn=>btn.onclick=()=>{chartRange=Number(btn.dataset.range);
   $$("#trend-range button").forEach(x=>x.setAttribute("aria-pressed",String(x===btn)));renderChart();});
+/* Scrub the chart to read any single day. */
+(function(){const root=$("#trend-chart");if(!root)return;
+  const at=e=>{if(!chartSeries)return;const r=root.getBoundingClientRect(),p=e.touches?e.touches[0]:e,
+    n=chartSeries.days.length,i=Math.max(0,Math.min(n-1,Math.floor((p.clientX-r.left)/r.width*n)));
+    setRead(i);const svg=root.querySelector("svg"),cur=root.querySelector("#chart-cursor");
+    if(svg&&cur){const cx=(i+0.5)/n*svg.viewBox.baseVal.width;cur.setAttribute("x1",cx);cur.setAttribute("x2",cx);cur.setAttribute("opacity","0.4");}};
+  const off=()=>{const cur=root.querySelector("#chart-cursor");if(cur)cur.setAttribute("opacity","0");setRead();};
+  root.addEventListener("pointermove",at);root.addEventListener("pointerleave",off);
+  root.addEventListener("touchstart",at,{passive:true});root.addEventListener("touchmove",at,{passive:true});})();
 
 function renderAll(){renderTimeline();renderStats();renderFoods();renderChart();
   $("#data-count").textContent=state.entries.length+" entries stored ("+bms().length+" movements, "+recalls().length+" flare food notes).";
