@@ -317,6 +317,8 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div id="print-root"></div>
 
+<!-- Pure symptom logic, shared with the test suite. Classic script so it also loads from file://. -->
+<script src="gutlog.core.js"></script>
 <script>
 (function(){
 "use strict";
@@ -359,31 +361,8 @@ let toastT;function toast(m){const e=$("#toast");e.textContent=m;e.classList.add
 
 const bms=()=>state.entries.filter(e=>e.kind==="bm");
 const recalls=()=>state.entries.filter(e=>e.kind==="recall");
-function severity(e){let s=0;if(e.bristol<=2)s+=1;if(e.bristol===6)s+=1.5;if(e.bristol===7)s+=2.2;
-  if(e.blood==="trace")s+=1;else if(e.blood==="visible")s+=2.2;if(e.mucus==="yes")s+=.6;
-  if(e.urgency==="mild")s+=.5;else if(e.urgency==="urgent")s+=1.2;s+=(Number(e.pain)||0)/10*1.6;return s;}
-const isFlare=e=>e.kind==="bm"&&(e.blood==="visible"||severity(e)>=3.2);
-
-/* baseline movements/day over trailing ~14d */
-function avgPerDay(){const b=bms();if(b.length<4)return null;
-  const span=Math.min(14,Math.max(1,Math.ceil((Date.now()-Math.min(...b.map(e=>e.ts)))/864e5)));
-  const since=Date.now()-span*864e5;return b.filter(e=>e.ts>=since).length/span;}
-
-/* Decide if "right now" looks worse than usual, and why. */
-function detectFlare(){
-  const b=bms().slice().sort((a,b)=>b.ts-a.ts);
-  if(!b.length)return null;
-  const reasons=[];
-  const last24=b.filter(e=>e.ts>=Date.now()-864e5).length;
-  const avg=avgPerDay();
-  const freqThresh=avg!=null?Math.max(3,Math.round(avg*1.8)):4;
-  if(last24>=freqThresh)reasons.push("more frequent ("+last24+" in 24 h)");
-  const recent3=b.slice(0,3);
-  if(recent3.length>=2&&recent3.filter(e=>e.bristol>=6).length>=2)reasons.push("looser stools");
-  if(b[0].blood==="visible")reasons.push("blood");
-  if(b[0].bristol===7&&last24>=2)reasons.push("watery stools");
-  return reasons.length?reasons:null;
-}
+/* Symptom scoring & flare detection live in gutlog.core.js (shared with the test suite). */
+const {isFlare,detectFlare}=GutlogCore;
 
 /* ════════════════════════  BM form  ════════════════════════ */
 let bm={bristol:null,urgency:"none",blood:"none",mucus:"no",pain:0},editId=null;
@@ -411,7 +390,7 @@ $("#form-bm").addEventListener("submit",e=>{e.preventDefault();
   const when=$("#bm-when").value;if(!when){toast("Set a time.");return;}
   const rec={id:editId||uid(),kind:"bm",ts:new Date(when).getTime(),bristol:bm.bristol,urgency:bm.urgency,blood:bm.blood,mucus:bm.mucus,pain:Number($("#bm-pain").value),notes:$("#bm-notes").value.trim()};
   const wasEdit=!!editId;upsert(rec);resetBm();toast(wasEdit?"Updated.":"Saved ✓");
-  if(!wasEdit){const r=detectFlare();if(r&&Date.now()-state.lastPrompt>18*3600e3){openRecall(r);}else{goView("v-timeline");}}
+  if(!wasEdit){const r=detectFlare(bms(),Date.now());if(r&&Date.now()-state.lastPrompt>18*3600e3){openRecall(r);}else{goView("v-timeline");}}
   else goView("v-timeline");
 });
 
