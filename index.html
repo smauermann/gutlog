@@ -166,6 +166,14 @@
   .banner{display:flex;gap:11px;background:#fbf4e9;border:1px solid #ecdcc0;border-radius:var(--radius-sm);padding:13px 15px;font-size:.83rem;color:#735b2c}
   .banner svg{width:18px;height:18px;flex:none;margin-top:1px;color:var(--gold)}
   .banner b{font-weight:680}
+  .install-banner{align-items:flex-start;margin-top:16px;background:var(--sage-wash);border-color:#cfe1d6;color:var(--sage-deep)}
+  .install-banner svg{color:var(--sage-deep)}
+  .install-banner .ib-body{flex:1;line-height:1.45}
+  .install-banner .ib-act{margin-top:9px}
+  .install-banner .ib-share{display:inline-block;width:14px;height:14px;vertical-align:-2px;margin:0 1px}
+  .install-banner .ib-install{border:1px solid var(--sage);background:var(--sage);color:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer}
+  .install-banner .ib-x{flex:none;border:0;background:none;color:var(--sage-deep);opacity:.55;font-size:1.3rem;line-height:1;padding:0 2px;margin:-2px -4px 0 4px;cursor:pointer}
+  .install-banner .ib-x:hover{opacity:1}
 
   .empty{text-align:center;padding:42px 20px;color:var(--ink-faint)}
   .empty svg{width:46px;height:46px;opacity:.5;margin-bottom:10px}
@@ -231,6 +239,11 @@
 
   <!-- LOG -->
   <section id="v-log" class="view active" aria-label="Log an entry">
+    <div class="banner install-banner" id="install-banner" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 7v7m0 0 3-3m-3 3-3-3"/></svg>
+      <div class="ib-body" id="install-body"></div>
+      <button type="button" class="ib-x" id="install-dismiss" aria-label="Dismiss">×</button>
+    </div>
     <form id="form-bm" class="card" autocomplete="off">
       <h2>Log a bowel movement</h2>
       <label class="field"><span class="lab">When</span><input type="datetime-local" id="bm-when" required></label>
@@ -649,13 +662,36 @@ async function ensurePersistence(){
   }catch(e){setStorageStatus(null);}
 }
 
+/* Install hint — surfaces "Add to Home Screen" so the data survives. On iOS that's
+   the ONLY way to make storage durable (storage.persist() is a no-op there), so the
+   browser auto-clears un-installed sites after ~7 idle days. Dismissible, shown once. */
+function initInstallHint(){
+  const el=$("#install-banner");if(!el)return;
+  const standalone=matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+  if(standalone||localStorage.getItem("gutlog.installHintDismissed")==="1")return;
+  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const body=$("#install-body");
+  const dismiss=()=>{el.hidden=true;try{localStorage.setItem("gutlog.installHintDismissed","1");}catch(e){}};
+  $("#install-dismiss").onclick=dismiss;
+  const lead="<b>Keep your data safe — add Gutlog to your Home Screen.</b> Everything lives only on this device, and installing the app stops the browser from clearing it";
+  const reveal=act=>{body.innerHTML="<div>"+lead+(isIOS?" — this matters most on iPhone.":".")+"</div>"+(act?'<div class="ib-act">'+act+"</div>":"");el.hidden=false;};
+  const share='<svg class="ib-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12m0-12 4 4m-4-4-4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+  if(isIOS){
+    reveal("In Safari, tap the Share button "+share+" then <b>Add to Home Screen</b>.");
+  }else{
+    window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();
+      reveal('<button type="button" class="ib-install" id="ib-install-btn">Install app</button>');
+      $("#ib-install-btn").onclick=async()=>{e.prompt();try{await e.userChoice;}catch(_){}dismiss();};});
+  }
+}
+
 /* Register the service worker (only over http/https — no-op on file://). */
 if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
   window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 }
 
 /* ════════════════════════  Init  ════════════════════════ */
-load();buildBristol();resetBm();renderAll();ensurePersistence();
+load();buildBristol();resetBm();renderAll();ensurePersistence();initInstallHint();
 })();
 </script>
 </body>
