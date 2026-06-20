@@ -4,13 +4,17 @@
 (function (root) {
   "use strict";
 
+  /* Blood values that signal a flare. "yes" is the simplified form's binary
+     "blood present"; "trace"/"visible" are legacy data kept scoring as-is. */
+  const bloodFlare = b => b === "visible" || b === "yes";
+
   /* Severity score for one bowel-movement entry. Higher = worse. */
   function severity(e) {
     let s = 0;
     if (e.bristol <= 2) s += 1;
     if (e.bristol === 6) s += 1.5;
     if (e.bristol === 7) s += 2.2;
-    if (e.blood === "trace") s += 1; else if (e.blood === "visible") s += 2.2;
+    if (e.blood === "trace") s += 1; else if (bloodFlare(e.blood)) s += 2.2;
     if (e.mucus === "yes") s += 0.6;
     if (e.urgency === "mild") s += 0.5; else if (e.urgency === "urgent") s += 1.2;
     s += (Number(e.pain) || 0) / 10 * 1.6;
@@ -18,7 +22,7 @@
   }
 
   function isFlare(e) {
-    return e.kind === "bm" && (e.blood === "visible" || severity(e) >= 3.2);
+    return e.kind === "bm" && (bloodFlare(e.blood) || severity(e) >= 3.2);
   }
 
   /* Baseline movements/day over a trailing ~14d window; null until enough data.
@@ -42,7 +46,7 @@
     if (last24 >= freqThresh) reasons.push("more frequent (" + last24 + " in 24 h)");
     const recent3 = b.slice(0, 3);
     if (recent3.length >= 2 && recent3.filter(e => e.bristol >= 6).length >= 2) reasons.push("looser stools");
-    if (b[0].blood === "visible") reasons.push("blood");
+    if (bloodFlare(b[0].blood)) reasons.push("blood");
     if (b[0].bristol === 7 && last24 >= 2) reasons.push("watery stools");
     return reasons.length ? reasons : null;
   }

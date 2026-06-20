@@ -31,6 +31,11 @@ test("severity: blood, mucus, urgency and pain accumulate", () => {
   expect(severity(bm({ pain: 10 }))).toBeCloseTo(1.6);
 });
 
+test("severity: binary blood — 'yes' scores like 'visible', 'no' adds nothing", () => {
+  expect(severity(bm({ blood: "yes" }))).toBeCloseTo(2.2);
+  expect(severity(bm({ blood: "no" }))).toBe(0);
+});
+
 test("isFlare: visible blood always flags, regardless of score", () => {
   expect(isFlare(bm({ bristol: 4, blood: "visible" }))).toBe(true);
 });
@@ -38,6 +43,11 @@ test("isFlare: visible blood always flags, regardless of score", () => {
 test("isFlare: a high enough severity score flags", () => {
   // type 7 (2.2) + urgent (1.2) = 3.4 >= 3.2
   expect(isFlare(bm({ bristol: 7, urgency: "urgent" }))).toBe(true);
+});
+
+test("isFlare: binary 'yes' blood flags, 'no' does not", () => {
+  expect(isFlare(bm({ bristol: 4, blood: "yes" }))).toBe(true);
+  expect(isFlare(bm({ bristol: 4, blood: "no" }))).toBe(false);
 });
 
 test("isFlare: a calm entry does not flag", () => {
@@ -65,6 +75,10 @@ test("detectFlare: returns null with no movements", () => {
 
 test("detectFlare: flags blood when the latest movement has visible blood", () => {
   expect(detectFlare([bm({ ts: NOW, blood: "visible" })], NOW)).toContain("blood");
+});
+
+test("detectFlare: flags blood for the binary 'yes' value too", () => {
+  expect(detectFlare([bm({ ts: NOW, blood: "yes" })], NOW)).toContain("blood");
 });
 
 test("detectFlare: flags looser stools when recent movements are type >= 6", () => {
