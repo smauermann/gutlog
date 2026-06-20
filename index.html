@@ -90,6 +90,16 @@
   .seg button{border:1px solid var(--line);background:#fffefb;border-radius:999px;padding:8px 14px;font-size:.86rem;font-weight:560;color:var(--ink-soft);cursor:pointer;transition:.16s}
   .seg button[aria-pressed="true"]{border-color:var(--sage);background:var(--sage);color:#fff}
   .seg.warn button[aria-pressed="true"]{border-color:var(--clay);background:var(--clay)}
+  .seg.big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .seg.big button{padding:10px;font-size:.88rem;font-weight:600;border-radius:11px}
+  .seg.big button[data-val="urgent"]{color:var(--clay);border-color:#e6c6b1}
+  .seg.big button[data-val="urgent"][aria-pressed="true"]{border-color:var(--clay);background:var(--clay);color:#fff}
+  details.advanced{margin-top:18px;border-top:1px solid var(--line)}
+  details.advanced>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:12px 2px 4px;font-size:.84rem;font-weight:620;color:var(--sage-deep)}
+  details.advanced>summary::-webkit-details-marker{display:none}
+  details.advanced>summary::before{content:"▸";color:var(--ink-faint);transition:transform .15s}
+  details.advanced[open]>summary::before{transform:rotate(90deg)}
+  details.advanced>summary span{font-weight:500;font-size:.78rem;color:var(--ink-faint)}
 
   .range-row{display:flex;align-items:center;gap:14px}
   input[type=range]{flex:1;accent-color:var(--sage)}
@@ -231,18 +241,21 @@
       <div class="bristol-help" id="bristol-help" aria-live="polite">Tap a type — 1–2 firm, 3–4 typical, 5–7 loose.</div>
 
       <div class="seg-title">Urgency</div>
-      <div class="seg" id="bm-urgency" data-key="urgency" role="group" aria-label="Urgency"></div>
+      <div class="seg big" id="bm-urgency" data-key="urgency" role="group" aria-label="Urgency"></div>
 
-      <div class="row2">
-        <div><div class="seg-title">Blood</div><div class="seg warn" id="bm-blood" data-key="blood" role="group" aria-label="Blood"></div></div>
-        <div><div class="seg-title">Mucus</div><div class="seg" id="bm-mucus" data-key="mucus" role="group" aria-label="Mucus"></div></div>
-      </div>
+      <details class="advanced" id="bm-advanced">
+        <summary>Add detail <span>blood · mucus · pain · notes</span></summary>
+        <div class="row2">
+          <div><div class="seg-title">Blood</div><div class="seg warn" id="bm-blood" data-key="blood" role="group" aria-label="Blood"></div></div>
+          <div><div class="seg-title">Mucus</div><div class="seg" id="bm-mucus" data-key="mucus" role="group" aria-label="Mucus"></div></div>
+        </div>
 
-      <div class="seg-title">Abdominal pain <span style="font-weight:500;color:var(--ink-faint)">(0 none – 10 worst)</span></div>
-      <div class="range-row"><input type="range" id="bm-pain" min="0" max="10" step="1" value="0" aria-label="Pain level 0 to 10"><span class="range-val tnum" id="bm-pain-val">0</span></div>
+        <div class="seg-title">Abdominal pain <span style="font-weight:500;color:var(--ink-faint)">(0 none – 10 worst)</span></div>
+        <div class="range-row"><input type="range" id="bm-pain" min="0" max="10" step="1" value="0" aria-label="Pain level 0 to 10"><span class="range-val tnum" id="bm-pain-val">0</span></div>
 
-      <label class="field"><span class="lab">Notes <span style="font-weight:500;color:var(--ink-faint)">(optional)</span></span>
-        <textarea id="bm-notes" placeholder="Stress, sleep, new meds, travel…"></textarea></label>
+        <label class="field"><span class="lab">Notes <span style="font-weight:500;color:var(--ink-faint)">(optional)</span></span>
+          <textarea id="bm-notes" placeholder="Stress, sleep, new meds, travel…"></textarea></label>
+      </details>
 
       <button type="submit" class="btn btn-primary">Save entry</button>
       <button type="button" class="btn btn-link" id="manual-flare">Having a rough patch? Log what you ate →</button>
@@ -369,8 +382,8 @@ const BRISTOL=[
  {n:7,t:"Entirely liquid, no solid pieces",col:"#bf7a3f",
   art:'<path class="f" d="M12 2c2.3 3.2 3.7 5.2 3.7 7.1a3.7 3.7 0 1 1-7.4 0C8.3 7.2 9.7 5.2 12 2Z"/><path class="f" d="M3 20q2.25-2 4.5 0t4.5 0t4.5 0t4.5 0V28H3Z"/>'},
 ];
-const SEGS={urgency:[["none","None"],["mild","Mild"],["urgent","Urgent"]],
-  blood:[["none","None"],["trace","Trace"],["visible","Visible"]],
+const SEGS={urgency:[["none","Normal"],["urgent","Urgent"]],
+  blood:[["no","No"],["yes","Yes"]],
   mucus:[["no","No"],["yes","Yes"]]};
 const RECALL_WINDOW_H=24;   // fixed lookback for flare food recall — keep it simple
 let state={entries:[],foods:[],lastPrompt:0};
@@ -388,13 +401,14 @@ function fmtDay(ts){const d=new Date(ts),t=new Date(),y=new Date(Date.now()-864e
 const esc=s=>(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let toastT;function toast(m){const e=$("#toast");e.textContent=m;e.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove("show"),2600);}
 
+const hasBlood=v=>v==="yes"||v==="trace"||v==="visible";   // positive blood, incl. legacy trace/visible
 const bms=()=>state.entries.filter(e=>e.kind==="bm");
 const recalls=()=>state.entries.filter(e=>e.kind==="recall");
 /* Symptom scoring & flare detection live in gutlog.core.js (shared with the test suite). */
 const {isFlare,detectFlare,dailySeries}=GutlogCore;
 
 /* ════════════════════════  BM form  ════════════════════════ */
-let bm={bristol:null,urgency:"none",blood:"none",mucus:"no",pain:0},editId=null;
+let bm={bristol:null,urgency:"none",blood:"no",mucus:"no",pain:0},editId=null;
 function buildBristol(){const w=$("#bristol");w.innerHTML="";BRISTOL.forEach(b=>{
   const btn=document.createElement("button");btn.type="button";btn.setAttribute("aria-pressed","false");
   btn.style.setProperty("--b-col",b.col);btn.innerHTML='<span class="n">'+b.n+'</span><svg viewBox="0 0 24 30" aria-hidden="true">'+b.art+'</svg>';
@@ -404,14 +418,14 @@ function buildBristol(){const w=$("#bristol");w.innerHTML="";BRISTOL.forEach(b=>
   btn.onclick=()=>{bm.bristol=b.n;$$("#bristol button").forEach(x=>x.setAttribute("aria-pressed","false"));btn.setAttribute("aria-pressed","true");show();};
   w.appendChild(btn);});}
 function buildSeg(id){const w=$("#"+id),key=w.dataset.key;w.innerHTML="";SEGS[key].forEach(([val,label])=>{
-  const btn=document.createElement("button");btn.type="button";btn.textContent=label;btn.setAttribute("aria-pressed",String(bm[key]===val));
+  const btn=document.createElement("button");btn.type="button";btn.textContent=label;btn.dataset.val=val;btn.setAttribute("aria-pressed",String(bm[key]===val));
   btn.onclick=()=>{bm[key]=val;$$("#"+id+" button").forEach(x=>x.setAttribute("aria-pressed","false"));btn.setAttribute("aria-pressed","true");};
   w.appendChild(btn);});}
-function resetBm(){bm={bristol:null,urgency:"none",blood:"none",mucus:"no",pain:0};editId=null;
+function resetBm(){bm={bristol:null,urgency:"none",blood:"no",mucus:"no",pain:0};editId=null;
   $("#bm-when").value=localInput(new Date());$("#bm-pain").value=0;$("#bm-pain-val").textContent="0";$("#bm-notes").value="";
   $$("#bristol button").forEach(x=>x.setAttribute("aria-pressed","false"));
   $("#bristol-help").innerHTML="Tap a type — 1–2 firm, 3–4 typical, 5–7 loose.";
-  ["bm-urgency","bm-blood","bm-mucus"].forEach(buildSeg);$("#form-bm h2").textContent="Log a bowel movement";}
+  ["bm-urgency","bm-blood","bm-mucus"].forEach(buildSeg);$("#bm-advanced").open=false;$("#form-bm h2").textContent="Log a bowel movement";}
 $("#bm-pain").oninput=e=>$("#bm-pain-val").textContent=e.target.value;
 
 $("#form-bm").addEventListener("submit",e=>{e.preventDefault();
@@ -468,6 +482,7 @@ function edit(id){const e=state.entries.find(x=>x.id===id);if(!e)return;
   $("#bm-when").value=localInput(new Date(e.ts));$("#bm-pain").value=e.pain;$("#bm-pain-val").textContent=e.pain;$("#bm-notes").value=e.notes||"";
   $$("#bristol button").forEach(b=>b.setAttribute("aria-pressed",String(Number(b.querySelector(".n").textContent)===e.bristol)));
   ["bm-urgency","bm-blood","bm-mucus"].forEach(buildSeg);$("#form-bm h2").textContent="Edit entry";
+  $("#bm-advanced").open=hasBlood(e.blood)||e.mucus==="yes"||e.pain>0||!!(e.notes&&e.notes.trim());
   goView("v-log");window.scrollTo({top:0,behavior:"smooth"});}
 
 /* ════════════════════════  Render  ════════════════════════ */
@@ -484,7 +499,7 @@ function renderTimeline(){const root=$("#timeline");
     list.forEach(e=>day.appendChild(renderEntry(e)));root.appendChild(day);});}
 function renderEntry(e){const el=document.createElement("div");el.className="entry";let tags="",det="";
   if(e.kind==="bm"){tags+='<span class="tag">Type '+e.bristol+'</span>';
-    if(e.blood&&e.blood!=="none")tags+='<span class="tag blood">Blood: '+e.blood+'</span>';
+    if(hasBlood(e.blood))tags+='<span class="tag blood">Blood: '+e.blood+'</span>';
     if(isFlare(e))tags+='<span class="tag flare">Flare signs</span>';
     const b=[];if(e.urgency!=="none")b.push("urgency "+e.urgency);if(e.mucus==="yes")b.push("mucus");if(e.pain>0)b.push("pain "+e.pain+"/10");det=b.join(" · ");
   }else{tags+='<span class="tag flare">Flare foods · last '+e.windowH+'h</span>';det=(e.foods||[]).join(", ");}
@@ -600,11 +615,11 @@ $("#ex-print").onclick=()=>{const since=Date.now()-30*864e5;
   const firstTs=list[0].ts,lastTs=list[list.length-1].ts;
   const spanDays=Math.min(30,Math.max(1,Math.ceil((Date.now()-firstTs)/864e5)));
   const avgDay=b.length?(b.length/spanDays).toFixed(1):"0";
-  const flareDays=new Set(b.filter(isFlare).map(e=>dayKey(e.ts))).size,bloodN=b.filter(e=>e.blood&&e.blood!=="none").length;
+  const flareDays=new Set(b.filter(isFlare).map(e=>dayKey(e.ts))).size,bloodN=b.filter(e=>hasBlood(e.blood)).length;
   const count={};R.forEach(r=>new Set(r.foods||[]).forEach(f=>count[f]=(count[f]||0)+1));
   const suspects=Object.entries(count).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([f,n])=>esc(f)+" ("+n+"×)");
   const rows=list.map(e=>{const d=new Date(e.ts);return "<tr><td>"+d.toLocaleDateString()+" "+fmtTime(e.ts)+"</td><td>"+
-    (e.kind==="bm"?"BM":"Foods")+"</td><td>"+(e.kind==="bm"?("Type "+e.bristol+(e.blood!=="none"?", blood:"+e.blood:"")+(e.mucus==="yes"?", mucus":"")+(e.urgency!=="none"?", urgency:"+e.urgency:"")+(e.pain>0?", pain "+e.pain+"/10":"")):("last "+e.windowH+"h: "+esc((e.foods||[]).join(", "))))+
+    (e.kind==="bm"?"BM":"Foods")+"</td><td>"+(e.kind==="bm"?("Type "+e.bristol+(hasBlood(e.blood)?", blood:"+e.blood:"")+(e.mucus==="yes"?", mucus":"")+(e.urgency!=="none"?", urgency:"+e.urgency:"")+(e.pain>0?", pain "+e.pain+"/10":"")):("last "+e.windowH+"h: "+esc((e.foods||[]).join(", "))))+
     "</td><td>"+esc(e.notes||"")+"</td></tr>";}).join("");
   $("#print-root").innerHTML="<h1>Gutlog — symptom summary</h1><div style='font-size:10pt;color:#333'>"+new Date(firstTs).toLocaleDateString()+" – "+new Date(lastTs).toLocaleDateString()+" ("+spanDays+" day"+(spanDays===1?"":"s")+" tracked) · generated "+new Date().toLocaleDateString()+"</div>"+
     (b.length>=4?"<h2>Movements per day (last 30 days)</h2>"+chartSVG(dailySeries(state.entries,30,Date.now())):"")+
